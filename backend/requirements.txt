@@ -1,0 +1,15 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+pillow==11.0.0
+torch==2.6.0
+torchvision==0.21.0
+transformers==4.47.1
+accelerate==1.2.1
+huggingface-hub==0.26.5
+grad-cam==1.5.4
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+python-dotenv==1.0.1
+requests==2.32.3
+aiofiles==24.1.0
