@@ -25,12 +25,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from utils.image_utils import bytes_to_pil, pil_to_b64
-from models import blip_local, hf_api
+from models import blip_local, hf_api, paligemma_local
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VQA-Insight API", version="1.0.0")
+
+
+@app.on_event("startup")
+async def _startup():
+    """Start loading PaliGemma in background so server responds immediately."""
+    paligemma_local.load_in_background()
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,11 +56,13 @@ _chats: dict[str, dict] = {}
 @app.get("/api/status")
 async def status():
     """Health check + model availability."""
+    pg = paligemma_local.status()
     return {
         "status": "ok",
         "local_model": os.getenv("LOCAL_MODEL_ID", "Salesforce/blip-vqa-base"),
         "advanced_model": os.getenv("HF_MODEL_ID", "Salesforce/blip2-opt-2.7b"),
         "advanced_available": hf_api.is_configured(),
+        "paligemma": pg,
         "device": "cuda" if _cuda_available() else "cpu",
         "timestamp": datetime.utcnow().isoformat(),
     }
@@ -248,6 +256,93 @@ async def clear_history(session_id: str):
     """Clear session history."""
     _history.pop(session_id, None)
     return {"cleared": True}
+
+
+@app.post("/api/predict-paligemma")
+async def predict_paligemma(
+    image: UploadFile = File(...),
+    question: str = Form(...),
+    session_id: str = Form(default="default"),
+):
+    """Run fine-tuned PaliGemma-3B + LoRA — multi-turn VQA."""
+    _validate_question(question)
+    pg = paligemma_local.status()
+    if pg["error"]:
+        raise HTTPException(status_code=503, detail=f"PaliGemma failed to load: {pg['error']}")
+    if pg["loading"]:
+        raise HTTPException(status_code=503, detail="PaliGemma is still loading, try again in a moment.")
+
+    img_bytes = await image.read()
+    pil_img   = bytes_to_pil(img_bytes)
+
+    start  = time.time()
+    result = await asyncio.to_thread(paligemma_local.predict, pil_img, question)
+    elapsed = round(time.time() - start, 2)
+
+    entry = _make_entry(question, result, elapsed, pil_img, "paligemma")
+    _push_history(session_id, entry)
+    return JSONResponse(content={**entry, "elapsed_seconds": elapsed})
+
+
+# Conversational chat sessions for PaliGemma
+_pg_chats: dict[str, dict] = {}
+
+
+@app.post("/api/chat-paligemma")
+async def chat_paligemma(
+    image: UploadFile = File(None),
+    question: str = Form(...),
+    chat_id: str = Form(default=""),
+):
+    """
+    Multi-turn VQA with PaliGemma.
+    First turn: send image + question → returns chat_id.
+    Follow-up turns: send chat_id + question (no image needed).
+    """
+    _validate_question(question)
+    pg = paligemma_local.status()
+    if pg["error"]:
+        raise HTTPException(status_code=503, detail=f"PaliGemma failed to load: {pg['error']}")
+    if pg["loading"]:
+        raise HTTPException(status_code=503, detail="PaliGemma is still loading, try again in a moment.")
+
+    if chat_id and chat_id in _pg_chats:
+        session = _pg_chats[chat_id]
+        pil_img = bytes_to_pil(
+            __import__("base64").b64decode(session["image_b64_raw"])
+        )
+    elif image:
+        img_bytes = await image.read()
+        pil_img   = bytes_to_pil(img_bytes)
+        chat_id   = str(uuid.uuid4())
+        _pg_chats[chat_id] = {
+            "image_b64":     pil_to_b64(pil_img),
+            "image_b64_raw": __import__("base64").b64encode(img_bytes).decode(),
+            "messages":      [],
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Provide image on first turn or valid chat_id.")
+
+    session = _pg_chats[chat_id]
+    history = session["messages"]
+
+    start  = time.time()
+    result = await asyncio.to_thread(
+        paligemma_local.predict, pil_img, question, history
+    )
+    elapsed = round(time.time() - start, 2)
+
+    session["messages"].append({"question": question, "answer": result["answer"]})
+
+    return JSONResponse(content={
+        "chat_id":   chat_id,
+        "image_b64": session["image_b64"],
+        "user_msg":  {"role": "user",      "content": question,         "timestamp": datetime.utcnow().isoformat()},
+        "ai_msg":    {"role": "assistant",  "content": result["answer"], "elapsed": elapsed,
+                      "confidence": result["confidence"], "timestamp": datetime.utcnow().isoformat()},
+        "turn":      len(session["messages"]),
+        "model":     result["model"],
+    })
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

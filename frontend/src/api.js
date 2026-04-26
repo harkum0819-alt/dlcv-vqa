@@ -46,4 +46,20 @@ export const api = {
 
   clearChat: (chatId) =>
     axios.delete(`${BASE}/chat/${chatId}`).then((r) => r.data),
+
+  // PaliGemma fine-tuned model
+  pgChatFirst: (image, question) => {
+    const fd = new FormData();
+    fd.append("image", image);
+    fd.append("question", question);
+    fd.append("chat_id", "");
+    return axios.post(`${BASE}/chat-paligemma`, fd).then((r) => r.data);
+  },
+
+  pgChatFollowUp: (chatId, question) => {
+    const fd = new FormData();
+    fd.append("chat_id", chatId);
+    fd.append("question", question);
+    return axios.post(`${BASE}/chat-paligemma`, fd).then((r) => r.data);
+  },
 };

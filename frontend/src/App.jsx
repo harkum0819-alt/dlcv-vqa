@@ -143,7 +143,7 @@ export default function App() {
               <ModeSelector mode={mode} setMode={setMode} />
             </div>
 
-            {mode !== "chat" && (
+            {mode !== "chat" && mode !== "paligemma" && (
               <div className="card p-5 space-y-4">
                 <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                   Step 3 · Ask a Question
@@ -181,8 +181,10 @@ export default function App() {
 
           {/* ── Right: Results ── */}
           <div className="lg:col-span-2 space-y-6">
-            {mode === "chat" ? (
-              <ChatView image={image} preview={preview} />
+            {mode === "paligemma" ? (
+              <ChatView image={image} preview={preview} variant="paligemma" />
+            ) : mode === "chat" ? (
+              <ChatView image={image} preview={preview} variant="blip" />
             ) : mode === "compare" ? (
               <CompareView result={compareResult} loading={loading} />
             ) : (
@@ -229,7 +231,8 @@ export default function App() {
       <footer className="border-t border-slate-100 dark:border-slate-800 py-4 px-4 text-center">
         <p className="text-xs text-slate-400">
           VQA-Insight · Deep Learning with Computer Vision ·{" "}
-          <span className="text-indigo-500 font-medium">BLIP + GradCAM</span>
+          <span className="text-indigo-500 font-medium">BLIP + GradCAM</span>{" "}·{" "}
+          <span className="text-violet-500 font-medium">PaliGemma-3B LoRA</span>
         </p>
       </footer>
     </div>

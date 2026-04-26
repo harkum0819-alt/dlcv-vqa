@@ -97,7 +97,8 @@ const SUGGESTIONS = [
   "What time of day is shown?",
 ];
 
-export default function ChatView({ image, preview }) {
+export default function ChatView({ image, preview, variant = "blip" }) {
+  const isPG = variant === "paligemma";
   const [messages, setMessages]   = useState([]);
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
@@ -136,10 +137,10 @@ export default function ChatView({ image, preview }) {
     try {
       let data;
       if (!chatId) {
-        data = await api.chatFirst(image, q);
+        data = isPG ? await api.pgChatFirst(image, q) : await api.chatFirst(image, q);
         setChatId(data.chat_id);
       } else {
-        data = await api.chatFollowUp(chatId, q);
+        data = isPG ? await api.pgChatFollowUp(chatId, q) : await api.chatFollowUp(chatId, q);
       }
 
       setMessages((prev) => [...prev, {
@@ -194,8 +195,13 @@ export default function ChatView({ image, preview }) {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            Visual Chat
+            {isPG ? "PaliGemma-3B Chat" : "Visual Chat"}
           </span>
+          {isPG && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 font-semibold">
+              Fine-tuned LoRA
+            </span>
+          )}
           {messages.length > 0 && (
             <span className="badge bg-indigo-50 dark:bg-indigo-950/50 text-indigo-500">
               {Math.ceil(messages.length / 2)} turn{messages.length > 2 ? "s" : ""}
@@ -231,13 +237,25 @@ export default function ChatView({ image, preview }) {
               <p className="font-semibold text-slate-700 dark:text-slate-300">Ask anything about the image</p>
               <p className="text-xs text-slate-400 mt-1">Ask multiple questions in a natural conversation flow</p>
             </div>
-            <div className="flex items-start gap-2 text-left max-w-xs p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900">
-              <Info size={13} className="text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                <span className="font-semibold">Tip:</span> Ask self-contained questions about what you see.
-                <br/>✅ <em>"What color is the butterfly?"</em>
-                <br/>❌ <em>"What color is it?"</em> (BLIP can't resolve pronouns)
-              </p>
+            <div className={`flex items-start gap-2 text-left max-w-xs p-3 rounded-xl border
+                            ${isPG
+                              ? "bg-violet-50 dark:bg-violet-950/30 border-violet-100 dark:border-violet-900"
+                              : "bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900"}`}>
+              <Info size={13} className={`mt-0.5 shrink-0 ${isPG ? "text-violet-500" : "text-amber-500"}`} />
+              {isPG ? (
+                <p className="text-xs text-violet-700 dark:text-violet-400">
+                  <span className="font-semibold">PaliGemma-3B</span> — fine-tuned on LLaVA-Instruct with LoRA.
+                  <br/>✅ Handles multi-turn conversations naturally.
+                  <br/>✅ Descriptive open-ended answers.
+                  <br/>Note: first response may take ~10s (GPU warm-up).
+                </p>
+              ) : (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-semibold">Tip:</span> Ask self-contained questions about what you see.
+                  <br/>✅ <em>"What color is the butterfly?"</em>
+                  <br/>❌ <em>"What color is it?"</em> (BLIP can't resolve pronouns)
+                </p>
+              )}
             </div>
           </div>
         )}
